@@ -1,9 +1,9 @@
 const config = {
     gravityX: 0,
     gravityY: 0.5,
-    bounce: 0.7,
+    bounce: 0.8,
     friction: 0.99,
-    returnSpeed: 0.04
+    returnSpeed: 0.05
 };
 
 let elements = [];
@@ -15,19 +15,35 @@ let mouseVelocity = { x: 0, y: 0 };
 let isVortexActive = false;
 let vortexPos = { x: 0, y: 0 };
 let lastVortexPos = { x: 0, y: 0 };
+let isReturningHome = false;
 let audioCtx = null;
 
 function getAudioContext() {
     if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
+        }
     }
     return audioCtx;
 }
 
+// Safe listener to boot context on user input without breaking logic flow
+window.addEventListener('click', () => {
+    try {
+        const ctx = getAudioContext();
+        if (ctx && ctx.state === 'suspended') {
+            ctx.resume();
+        }
+    } catch (err) {
+        console.log("Audio unlock deferred.");
+    }
+}, { once: true });
+
 function playSynthSound(type, frequencyStart, frequencyEnd, duration) {
     try {
         const ctx = getAudioContext();
-        if (ctx.state === 'suspended') ctx.resume();
+        if (!ctx || ctx.state === 'suspended') return; 
 
         const osc = ctx.createOscillator();
         const gainNode = ctx.createGain();
@@ -36,7 +52,7 @@ function playSynthSound(type, frequencyStart, frequencyEnd, duration) {
         osc.frequency.setValueAtTime(frequencyStart, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(frequencyEnd, ctx.currentTime + duration);
 
-        gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+        gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
 
         osc.connect(gainNode);
@@ -45,7 +61,7 @@ function playSynthSound(type, frequencyStart, frequencyEnd, duration) {
         osc.start();
         osc.stop(ctx.currentTime + duration);
     } catch (e) {
-        console.log("Audio blocked.");
+        console.log("Audio warning caught smoothly.");
     }
 }
 
@@ -67,7 +83,6 @@ class PhysicsObject {
         this.vy = 0;
         this.isDragged = false;
         this.isSwallowed = false;
-        this.isExploding = false;
         this.hasPlayedReturnSound = false;
 
         this.element.style.transition = "transform 0.15s ease, opacity 0.15s ease";
@@ -78,7 +93,6 @@ class PhysicsObject {
 
         if (isVortexActive) {
             this.hasPlayedReturnSound = false; 
-            this.isExploding = false;
 
             if (!this.isSwallowed) {
                 const elementCenterX = this.x + this.width / 2;
@@ -102,61 +116,60 @@ class PhysicsObject {
                     playSynthSound('sawtooth', 100, 50, 0.3); 
                 }
             }
+        } else if (isReturningHome) {
+            if (this.isSwallowed) {
+                this.isSwallowed = false;
+                this.x = lastVortexPos.x - this.width / 2;
+                this.y = lastVortexPos.y - this.height / 2;
+                this.element.style.transform = "scale(1)";
+                this.element.style.opacity = "1";
+                this.vx = (Math.random() - 0.5) * 30;
+                this.vy = (Math.random() - 0.7) * 30;
+            }
+
+            const dxHome = this.homeX - this.x;
+            const dyHome = this.homeY - this.y;
+            const distanceToHome = Math.sqrt(dxHome * dxHome + dyHome * dyHome);
+
+            if (distanceToHome > 2) {
+                if (!this.hasPlayedReturnSound) {
+                    playSynthSound('triangle', 400, 800, 0.4);
+                    this.hasPlayedReturnSound = true;
+                }
+                this.x += dxHome * config.returnSpeed;
+                this.y += dyHome * config.returnSpeed;
+                this.vx = 0;
+                this.vy = 0;
+                
+                this.element.style.left = `${this.x}px`;
+                this.element.style.top = `${this.y}px`;
+                return; 
+            }
         } else {
             if (this.isSwallowed) {
                 this.isSwallowed = false;
-                this.isExploding = true;
-                
-                this.x = lastVortexPos.x - this.width / 2;
-                this.y = lastVortexPos.y - this.height / 2;
-                
                 this.element.style.transform = "scale(1)";
                 this.element.style.opacity = "1";
-
-                this.vx = (Math.random() - 0.5) * 60;
-                this.vy = (Math.random() - 0.7) * 60;
-            }
-
-            const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-            
-            if (speed < 1.5 && !this.isDragged) {
-                this.isExploding = false;
-                const dxHome = this.homeX - this.x;
-                const dyHome = this.homeY - this.y;
-                const distanceToHome = Math.sqrt(dxHome * dxHome + dyHome * dyHome);
-
-                if (distanceToHome > 2) {
-                    if (!this.hasPlayedReturnSound) {
-                        playSynthSound('triangle', 400, 800, 0.4);
-                        this.hasPlayedReturnSound = true;
-                    }
-                    this.x += dxHome * config.returnSpeed;
-                    this.y += dyHome * config.returnSpeed;
-                    this.vx = 0;
-                    this.vy = 0;
-                    
-                    this.element.style.left = `${this.x}px`;
-                    this.element.style.top = `${this.y}px`;
-                    return; 
-                }
             }
         }
 
         this.vx += config.gravityX;
         this.vy += config.gravityY;
-        this.vx *= config.friction;
-        this.vy *= config.friction;
+
+        if (config.gravityY !== 0 || config.gravityX !== 0) {
+            this.vx *= config.friction;
+            this.vy *= config.friction;
+        }
 
         this.x += this.vx;
         this.y += this.vy;
 
-        const screenWidth = window.innerWidth;
-        const screenHeight = window.innerHeight;
+        const screenWidth = window.innerWidth || document.documentElement.clientWidth || 1000;
+        const screenHeight = window.innerHeight || document.documentElement.clientHeight || 800;
 
         if (this.y + this.height > screenHeight) {
             this.y = screenHeight - this.height;
             this.vy = -this.vy * config.bounce;
-            this.vx *= 0.9; 
         } else if (this.y < 0) {
             this.y = 0;
             this.vy = -this.vy * config.bounce;
@@ -185,8 +198,13 @@ function initEngine() {
     window.addEventListener('mousedown', (e) => {
         if (e.target.closest('#controls') || e.target.id === 'physics-input' || draggedElement) return;
 
-        getAudioContext(); 
+        try {
+            const ctx = getAudioContext();
+            if (ctx && ctx.state === 'suspended') ctx.resume();
+        } catch(err){}
+        
         isVortexActive = true;
+        isReturningHome = false; 
         vortexPos.x = e.clientX;
         vortexPos.y = e.clientY;
         lastVortexPos.x = e.clientX;
@@ -219,10 +237,15 @@ function initEngine() {
     window.addEventListener('mouseup', () => {
         if (isVortexActive) {
             isVortexActive = false;
+            isReturningHome = true; 
             if (blackHoleVisual) {
                 blackHoleVisual.classList.remove('active');
             }
             playSynthSound('square', 150, 600, 0.35);
+
+            setTimeout(() => {
+                isReturningHome = false;
+            }, 2500);
         }
 
         if (draggedElement) {
@@ -252,7 +275,7 @@ function initEngine() {
                 document.body.appendChild(newBox);
                 
                 const physObj = new PhysicsObject(newBox);
-                physObj.vx = (Math.random() - 0.5) * 15;
+                physObj.vx = (Math.random() - 0.5) * 20;
                 physObj.vy = -Math.floor(Math.random() * 10) - 10;
                 
                 elements.push(physObj);
@@ -268,6 +291,10 @@ function initEngine() {
         } else {
             config.gravityX = 0;
             config.gravityY = 0;
+            elements.forEach(obj => {
+                obj.vx = (Math.random() - 0.5) * 8;
+                obj.vy = (Math.random() - 0.5) * 8;
+            });
             this.textContent = "Enable Gravity";
         }
     });
@@ -279,8 +306,8 @@ function initEngine() {
 
     document.getElementById('scatter').addEventListener('click', () => {
         elements.forEach(obj => {
-            obj.vx = (Math.random() - 0.5) * 40;
-            obj.vy = (Math.random() - 0.5) * 40;
+            obj.vx = (Math.random() - 0.5) * 25;
+            obj.vy = (Math.random() - 0.5) * 25;
         });
     });
 }
@@ -290,7 +317,14 @@ function runEngine() {
     requestAnimationFrame(runEngine);
 }
 
-window.addEventListener('load', () => {
+// CRITICAL SAFE GUARD: Wrapped execution loop so window parameters can't freeze initialization
+try {
     initEngine();
     runEngine();
-});
+} catch (error) {
+    console.log("Engine recovered instantly.");
+    window.addEventListener('load', () => {
+        initEngine();
+        runEngine();
+    });
+}
