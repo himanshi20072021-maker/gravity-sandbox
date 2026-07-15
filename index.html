@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newton's Nightmare: Anti-Gravity Sandbox</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="black-hole"></div>
+
+    <div id="controls">
+        <h2>Physics Engine</h2>
+        <div class="btn-group">
+            <button id="toggle-gravity">Zero Gravity</button>
+            <button id="reverse-gravity">Reverse Gravity</button>
+            <button id="scatter">Explode UI</button>
+        </div>
+        <p class="hint">Drag elements to throw them, or hold click to summon a black hole!</p>
+    </div>
+
+    <div class="physics-obj card" style="top: 250px; left: 400px;">
+        <h3>Interactive Card</h3>
+        <p>I am a dynamic element. Drag and flick me anywhere!</p>
+    </div>
+
+    <div class="physics-obj badge badge-green" style="top: 150px; left: 450px;">Success</div>
+    <div class="physics-obj badge badge-amber" style="top: 150px; left: 600px;">Warning</div>
+    
+    <input type="text" id="physics-input" class="physics-obj input-box" placeholder="Type text & hit Enter..." style="top: 400px; left: 500px;">
+
+    <div class="physics-obj circle neon-pink" style="top: 300px; left: 200px;"></div>
+    <div class="physics-obj circle neon-purple" style="top: 350px; left: 750px;"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
